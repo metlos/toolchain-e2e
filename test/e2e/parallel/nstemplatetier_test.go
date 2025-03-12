@@ -34,7 +34,7 @@ const (
 )
 
 func TestNSTemplateTiers(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 	// given
 	awaitilities := WaitForDeployments(t)
 	hostAwait := awaitilities.Host()
@@ -88,7 +88,7 @@ func TestNSTemplateTiers(t *testing.T) {
 }
 
 func TestUpdateNSTemplateTier(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 	// in this test, we have 2 groups of users, configured with their own tier (both using the "base1ns" tier templates)
 	// then, the first tier is updated with the "advanced" templates, whereas the second one is updated using the "baseextendedidling" templates
 	// finally, all user namespaces are verified.
@@ -144,7 +144,7 @@ func TestUpdateNSTemplateTier(t *testing.T) {
 }
 
 func TestResetDeactivatingStateWhenPromotingUser(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 	awaitilities := WaitForDeployments(t)
 	hostAwait := awaitilities.Host()
 	t.Run("test reset deactivating state when promoting user", func(t *testing.T) {
@@ -250,7 +250,7 @@ func verifyResourceUpdatesForSpaces(t *testing.T, hostAwait *wait.HostAwaitility
 }
 
 func TestTierTemplates(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 	// given
 	awaitilities := WaitForDeployments(t)
 	hostAwait := awaitilities.Host()
@@ -271,7 +271,7 @@ func TestTierTemplates(t *testing.T) {
 }
 
 func TestFeatureToggles(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 	awaitilities := WaitForDeployments(t)
 	hostAwait := awaitilities.Host()
 	memberAwait := awaitilities.Member1()
@@ -366,7 +366,7 @@ func TestFeatureToggles(t *testing.T) {
 }
 
 func TestTierTemplateRevision(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 
 	// given
 	awaitilities := WaitForDeployments(t)
@@ -479,7 +479,6 @@ func TestTierTemplateRevision(t *testing.T) {
 				Value: "100",
 			})
 		})
-
 	})
 
 	t.Run("when updating one tiertemplate the revisions field should be cleaned up from old entries", func(t *testing.T) {
@@ -517,7 +516,6 @@ func TestTierTemplateRevision(t *testing.T) {
 		// revisions values should be different compared to the previous ones
 		assert.NotEqual(t, revisionsBeforeUpdate, updatedTier.Status.Revisions)
 	})
-
 }
 
 func getTestCRQ(podsCount string) unstructured.Unstructured {
