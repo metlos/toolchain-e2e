@@ -1406,13 +1406,21 @@ func (a *MemberAwaitility) WaitUntilSpaceBindingRequestDeleted(t *testing.T, spa
 // Create tries to create the object until success
 // Workaround for https://github.com/kubernetes/kubernetes/issues/67761
 func (a *MemberAwaitility) Create(t *testing.T, obj client.Object) error {
-	return wait.PollUntilContextTimeout(context.TODO(), a.RetryInterval, a.Timeout, true, func(ctx context.Context) (done bool, err error) {
+	err := wait.PollUntilContextTimeout(context.TODO(), a.RetryInterval, a.Timeout, true, func(ctx context.Context) (done bool, err error) {
 		if err := a.Client.Create(context.TODO(), obj); err != nil {
 			t.Logf("trying to create %+v. Error: %s. Will try to create again.", obj, err.Error())
 			return false, nil
 		}
 		return true, nil
 	})
+
+	if err == nil {
+		t.Logf("successfully created %T %s", obj, client.ObjectKeyFromObject(obj))
+	} else {
+		t.Logf("failed to create %T %s: %s", obj, client.ObjectKeyFromObject(obj), err.Error())
+	}
+
+	return err
 }
 
 // PodWaitCriterion a struct to compare with a given Pod
@@ -1559,29 +1567,62 @@ func (a *MemberAwaitility) WaitUntilInferenceServiceDeleted(t *testing.T, name, 
 
 // WaitForPods waits until "n" number of pods exist in the given namespace
 func (a *MemberAwaitility) WaitForPods(t *testing.T, namespace string, n int, criteria ...PodWaitCriterion) ([]corev1.Pod, error) {
-	t.Logf("waiting for Pods in namespace '%s' with matching criteria", namespace)
+	t.Logf("waiting for %d Pods in namespace '%s' with matching criteria", n, namespace)
 	pods := make([]corev1.Pod, 0, n)
+	var lastDiffs map[string][]string
+	attempts := 0
 	err := wait.PollUntilContextTimeout(context.TODO(), a.RetryInterval, a.Timeout, true, func(ctx context.Context) (done bool, err error) {
 		pds := make([]corev1.Pod, 0, n)
 		foundPods := &corev1.PodList{}
 		if err := a.Client.List(context.TODO(), foundPods, client.InNamespace(namespace)); err != nil {
 			return false, err
 		}
+		lastDiffs = map[string][]string{}
+		attempts++
 	pods:
 		for _, p := range foundPods.Items {
 			if !matchPodWaitCriterion(&p, criteria...) { // nolint:gosec
 				// skip of criteria do not match
+				diffs := make([]string, len(criteria))
+				for i, c := range criteria {
+					diffs[i] = c.Diff(&p)
+				}
+				lastDiffs[p.Name] = diffs
 				continue pods
+			} else {
+				lastDiffs[p.Name] = []string{"MATCHES"}
 			}
 			pod := p // copy
 			pds = append(pds, pod)
 		}
 		if len(pds) != n {
+			// NOTE: the following code can be uncommented to have a detailed overview of the "evolution" of the pod states.
+			// It is however VERY verbose, so it's commented out by default.
+			// var sb strings.Builder
+			// sb.WriteString(fmt.Sprintf("failed to match exactly %d pods in the %d-th attempt with the following differences:\n", n, attempts))
+			// for podName, diffs := range lastDiffs {
+			// 	sb.WriteString(fmt.Sprintf("%s: [%s]\n", podName, strings.Join(diffs, ", ")))
+			// }
+			// t.Log(sb.String())
 			return false, nil
 		}
 		pods = pds
 		return true, nil
 	})
+
+	if err != nil && len(lastDiffs) > 0 {
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("last attempt to find exactly %d pods matching the criteria failed with the following differences:\n", n))
+		for podName, diffs := range lastDiffs {
+			sb.WriteString(fmt.Sprintf("%s: [%s]\n", podName, strings.Join(diffs, ", ")))
+		}
+		t.Log(sb.String())
+	}
+
+	if err == nil {
+		t.Logf("All %d pods matched after %d attempts", n, attempts)
+	}
+
 	return pods, err
 }
 
@@ -2248,7 +2289,7 @@ func (a *MemberAwaitility) verifyMutatingWebhookConfig(t *testing.T, ca []byte) 
 	a.waitForResource(t, "", "member-operator-webhook-"+a.Namespace, actualMutWbhConf)
 	assert.Equal(t, bothWebhookLabels, actualMutWbhConf.Labels)
 	require.Len(t, actualMutWbhConf.Webhooks, 2)
-	//check that there is only 1 MutatingWebhookConfiguration
+	// check that there is only 1 MutatingWebhookConfiguration
 	allMutatingWebhooks := &admv1.MutatingWebhookConfigurationList{}
 	err := a.Client.List(context.TODO(), allMutatingWebhooks, client.MatchingLabels(appMemberOperatorWebhookLabel))
 	require.NoError(t, err)
@@ -2326,7 +2367,7 @@ func (a *MemberAwaitility) verifyValidatingWebhookConfig(t *testing.T, ca []byte
 	actualValWbhConf := &admv1.ValidatingWebhookConfiguration{}
 	a.waitForResource(t, "", "member-operator-validating-webhook-"+a.Namespace, actualValWbhConf)
 	assert.Equal(t, bothWebhookLabels, actualValWbhConf.Labels)
-	//check that there is only 1 ValidatingWebhookConfiguration
+	// check that there is only 1 ValidatingWebhookConfiguration
 	allValidatingWebhooks := &admv1.ValidatingWebhookConfigurationList{}
 	err := a.Client.List(context.TODO(), allValidatingWebhooks, client.MatchingLabels(appMemberOperatorWebhookLabel))
 	require.NoError(t, err)
@@ -2518,7 +2559,8 @@ func (a *MemberAwaitility) WaitForEnvironment(t *testing.T, namespace, name stri
 		obj := &appstudiov1.Environment{}
 		if err := a.Client.Get(context.TODO(), types.NamespacedName{
 			Namespace: namespace,
-			Name:      name},
+			Name:      name,
+		},
 			obj); errors.IsNotFound(err) {
 			return false, nil
 		} else if err != nil {
